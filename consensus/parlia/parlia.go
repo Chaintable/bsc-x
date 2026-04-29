@@ -2240,6 +2240,9 @@ func (p *Parlia) applyTransaction(
 	tracingReceipt = types.NewReceipt(root, false, *usedGas)
 	tracingReceipt.TxHash = expectedTx.Hash()
 	tracingReceipt.GasUsed = gasUsed
+	// System tx pays no gas; consensus path doesn't populate EffectiveGasPrice,
+	// but tracers (e.g. pipeline) consume the receipt and may dereference it.
+	tracingReceipt.EffectiveGasPrice = new(big.Int)
 
 	// Set the receipt logs and create a bloom for filtering
 	tracingReceipt.Logs = state.GetLogs(expectedTx.Hash(), header.Number.Uint64(), header.Hash(), header.Time)

@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/trie/utils"
@@ -148,6 +149,8 @@ type StateDB struct {
 	// State witness if cross validation is needed
 	witness      *stateless.Witness // TODO(Nathan): more define the relation with `noTrie`
 	witnessStats *stateless.WitnessStats
+
+	onCommit tracing.CommitHook
 
 	// Measurements gathered during execution for debugging purposes
 	AccountReads    time.Duration
@@ -1466,12 +1469,41 @@ func (s *StateDB) commit(deleteEmptyObjects bool, noStorageWiping bool, blockNum
 	return newStateUpdate(noStorageWiping, origin, root, blockNumber, deletes, updates, nodes), nil
 }
 
+func (s *StateDB) SetOnCommit(onCommit tracing.CommitHook) {
+	s.onCommit = onCommit
+}
+
 // commitAndFlush is a wrapper of commit which also commits the state mutations
 // to the configured data stores.
 func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool, noStorageWiping bool) (*stateUpdate, error) {
 	ret, err := s.commit(deleteEmptyObjects, noStorageWiping, block)
 	if err != nil {
 		return nil, err
+	}
+	if s.onCommit != nil {
+		contracts := make(map[common.Hash][]byte)
+		for _, code := range ret.codes {
+			contracts[code.hash] = code.blob
+		}
+		destructs := make(map[common.Hash]struct{})
+		accounts := make(map[common.Hash][]byte)
+		for addr, v := range ret.accounts {
+			if v == nil {
+				destructs[addr] = struct{}{}
+			} else {
+				accounts[addr] = v
+			}
+		}
+		s.onCommit(
+			ret.originRoot,
+			ret.root,
+			destructs,
+			accounts,
+			ret.accountsOrigin,
+			ret.storages,
+			ret.storagesOrigin,
+			contracts,
+		)
 	}
 
 	// Commit dirty contract code if any exists
@@ -1733,4 +1765,57 @@ func (s *StateDB) GetDirtyAccounts() []common.Address {
 		accounts = append(accounts, account)
 	}
 	return accounts
+}
+
+// StateDiff computes the state diff after all state changes have been applied.
+// It returns the root hash, destructed accounts, account changes, storage changes, and code changes.
+func (s *StateDB) StateDiff(deleteEmptyObjects bool) (root common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storages map[common.Hash]map[common.Hash][]byte, codes map[common.Hash][]byte, err error) {
+	root = s.IntermediateRoot(deleteEmptyObjects)
+	destructs = make(map[common.Hash]struct{})
+	accounts = make(map[common.Hash][]byte)
+	storages = make(map[common.Hash]map[common.Hash][]byte)
+	codes = make(map[common.Hash][]byte)
+	var (
+		buf    = crypto.NewKeccakState()
+		encode = func(val common.Hash) []byte {
+			if val == (common.Hash{}) {
+				return nil
+			}
+			blob, _ := rlp.EncodeToBytes(common.TrimLeftZeroes(val[:]))
+			return blob
+		}
+	)
+	for addr, prevObj := range s.stateObjectsDestruct {
+		prev := prevObj.origin
+		if prev == nil {
+			continue
+		}
+		addrHash := crypto.HashData(buf, addr.Bytes())
+		destructs[addrHash] = struct{}{}
+	}
+	for addr, op := range s.mutations {
+		if op.isDelete() {
+			continue
+		}
+		obj := s.stateObjects[addr]
+		if obj == nil {
+			panic("missing state object")
+		}
+		addrHash := crypto.HashData(buf, addr.Bytes())
+		accounts[addrHash] = types.SlimAccountRLP(obj.data)
+		if obj.dirtyCode {
+			codes[common.Hash(obj.CodeHash())] = obj.code
+		}
+		for key, val := range obj.pendingStorage {
+			if val == obj.originStorage[key] {
+				continue
+			}
+			hash := crypto.HashData(buf, key[:])
+			if _, ok := storages[addrHash]; !ok {
+				storages[addrHash] = make(map[common.Hash][]byte)
+			}
+			storages[addrHash][hash] = encode(val)
+		}
+	}
+	return
 }
