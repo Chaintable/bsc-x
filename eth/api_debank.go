@@ -256,6 +256,7 @@ func (api *DebankAPI) DebankBlock(ctx context.Context, blockNrOrHash rpc.BlockNu
 		GetResult: rpcTracer.GetResult,
 	}
 
+	statedb.SetExpectedStateRoot(block.Root())
 	rpcTracer.OnBlockStart(block)
 
 	_, err = api.eth.BlockChain().Processor().Process(block, statedb, vm.Config{Tracer: tracerHooks.Hooks})
