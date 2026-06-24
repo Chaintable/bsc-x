@@ -1,11 +1,6 @@
 # builder image
 FROM golang:1.25-bookworm AS builder
 
-ARG ACCESS_TOKEN=""
-
-# Allow go mod to fetch private Chaintable/pipeline via the GitHub App token.
-RUN if [ -n "$ACCESS_TOKEN" ]; then git config --global url."https://x-access-token:${ACCESS_TOKEN}@github.com".insteadOf "https://github.com"; fi
-
 WORKDIR /bsc
 
 # Pre-fetch dependencies so layer caches are reused when only source changes.
