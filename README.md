@@ -25,6 +25,10 @@ The goal of BNB Smart Chain is to bring programmability and interoperability to 
 
 BNB Smart Chain starts its development based on go-ethereum fork. So you may see many toolings, binaries and also docs are based on Ethereum ones, such as the name "geth".
 
+[![API Reference](
+https://pkg.go.dev/badge/github.com/ethereum/go-ethereum
+)](https://pkg.go.dev/github.com/ethereum/go-ethereum?tab=doc)
+[![Build Test](https://github.com/bnb-chain/bsc/actions/workflows/build-test.yml/badge.svg)](https://github.com/bnb-chain/bsc/actions)
 [![Discord](https://img.shields.io/badge/discord-join%20chat-blue.svg)](https://discord.gg/z2VpC455eU)
 
 But from that baseline of EVM compatible, BNB Smart Chain introduces a system of 21 validators with Proof of Staked Authority (PoSA) consensus that can support short block time and lower fees. The most bonded validator candidates of staking will become validators and produce blocks. The double-sign detection and other slashing logic guarantee security, stability, and chain finality.
@@ -136,17 +140,14 @@ The requirement for testnet:
 ### Steps to Run a Fullnode
 
 #### 1. Download the pre-build binaries
-
-This repo's binary archives and release assets are published at [Chaintable/bsc-x/releases](https://github.com/Chaintable/bsc-x/releases); CI also publishes container images to Chaintable's public ECR.
-
 ```shell
 # Linux
-wget $(curl -s https://api.github.com/repos/Chaintable/bsc-x/releases/latest |grep browser_ |grep geth_linux |cut -d\" -f4)
+wget $(curl -s https://api.github.com/repos/bnb-chain/bsc/releases/latest |grep browser_ |grep geth_linux |cut -d\" -f4)
 mv geth_linux geth
 chmod -v u+x geth
 
 # MacOS
-wget $(curl -s https://api.github.com/repos/Chaintable/bsc-x/releases/latest |grep browser_ |grep geth_mac |cut -d\" -f4)
+wget $(curl -s https://api.github.com/repos/bnb-chain/bsc/releases/latest |grep browser_ |grep geth_mac |cut -d\" -f4)
 mv geth_macos geth
 chmod -v u+x geth
 ```
@@ -154,11 +155,11 @@ chmod -v u+x geth
 #### 2. Download the config files
 ```shell
 //== mainnet
-wget $(curl -s https://api.github.com/repos/Chaintable/bsc-x/releases/latest |grep browser_ |grep mainnet |cut -d\" -f4)
+wget $(curl -s https://api.github.com/repos/bnb-chain/bsc/releases/latest |grep browser_ |grep mainnet |cut -d\" -f4)
 unzip mainnet.zip
 
 //== testnet
-wget $(curl -s https://api.github.com/repos/Chaintable/bsc-x/releases/latest |grep browser_ |grep testnet |cut -d\" -f4)
+wget $(curl -s https://api.github.com/repos/bnb-chain/bsc/releases/latest |grep browser_ |grep testnet |cut -d\" -f4)
 unzip testnet.zip
 ```
 
