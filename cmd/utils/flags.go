@@ -985,6 +985,12 @@ var (
 		Value:    "",
 		Category: flags.NetworkingCategory,
 	}
+	StaticPeersFlag = &cli.StringFlag{
+		Name:     "staticpeers",
+		Usage:    "Comma separated enode URLs to maintain permanent connections to, overriding P2P.StaticNodes from the config file",
+		Value:    "",
+		Category: flags.NetworkingCategory,
+	}
 	NodeKeyFileFlag = &cli.StringFlag{
 		Name:     "nodekey",
 		Usage:    "P2P node key file",
@@ -1453,6 +1459,28 @@ func mustParseBootnodes(urls []string) []*enode.Node {
 	return nodes
 }
 
+// setStaticPeers creates a list of static peers from the command line flags,
+// keeping any nodes supplied by the config file if the flag is not set.
+func setStaticPeers(ctx *cli.Context, cfg *p2p.Config) {
+	if !ctx.IsSet(StaticPeersFlag.Name) {
+		return // Already set by config file, or left empty.
+	}
+	urls := SplitAndTrim(ctx.String(StaticPeersFlag.Name))
+	nodes := make([]*enode.Node, 0, len(urls))
+	for _, url := range urls {
+		if url == "" {
+			continue
+		}
+		node, err := enode.Parse(enode.ValidSchemes, url)
+		if err != nil {
+			log.Crit("Static peer URL invalid", "enode", url, "err", err)
+			return
+		}
+		nodes = append(nodes, node)
+	}
+	cfg.StaticNodes = nodes
+}
+
 // setBootstrapNodesV5 creates a list of bootstrap nodes from the command line
 // flags, reverting to pre-configured ones if none have been specified.
 func setBootstrapNodesV5(ctx *cli.Context, cfg *p2p.Config) {
@@ -1724,6 +1752,7 @@ func SetP2PConfig(ctx *cli.Context, cfg *p2p.Config) {
 	setListenAddress(ctx, cfg)
 	setBootstrapNodes(ctx, cfg)
 	setBootstrapNodesV5(ctx, cfg)
+	setStaticPeers(ctx, cfg)
 
 	if ctx.IsSet(MaxPeersFlag.Name) {
 		cfg.MaxPeers = ctx.Int(MaxPeersFlag.Name)
