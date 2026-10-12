@@ -2149,7 +2149,7 @@ func (bc *BlockChain) pipelinePushBlockChange(block *types.Block) {
 	}
 
 	if blockChange != nil {
-		if err := tracer.NodeXPusher.PushBlockChangeNotification(blockChange); err != nil {
+		if err := tracer.NodeXPusher.PushBlockChangeNotification(blockChange, nil); err != nil {
 			log.Error("PushBlockChangeNotification error", "err", err)
 		}
 		log.Info("NodeXPusher PushBlockChangeNotification", "blockChange", blockChange)
