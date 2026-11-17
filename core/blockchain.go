@@ -30,9 +30,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Chaintable/pipeline/leader"
 	"github.com/Chaintable/pipeline/tracer"
-	ptypes "github.com/Chaintable/pipeline/types"
 	"github.com/Chaintable/pipeline/util"
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/ethereum/go-ethereum/common"
@@ -2111,92 +2109,10 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	return nil
 }
 
-// getCommonAncestor 返回两个块的共同祖先,以及两个块的从共同祖先到两个块的路径,即drop和new
-func (bc *BlockChain) getCommonAncestor(blocka ptypes.BlockContext, blockb ptypes.BlockContext) (ptypes.BlockContext, []ptypes.BlockContext, []ptypes.BlockContext) {
-	var (
-		chainA, chainB []ptypes.BlockContext
-	)
-	if blockb.ParentHash == blocka.Hash {
-		return blocka, chainA, []ptypes.BlockContext{blockb}
-	}
-	for blockb.BlockNumber > blocka.BlockNumber {
-		chainB = append(chainB, blockb)
-		headerb := bc.GetHeaderByHash2(blockb.ParentHash)
-		if headerb == nil {
-			log.Crit("Failed to get header by hash", "hash", blockb.ParentHash)
-		} else {
-			blockb = ptypes.BlockContext{
-				BlockNumber: headerb.Number.Uint64(),
-				Hash:        headerb.Hash(),
-				ParentHash:  headerb.ParentHash,
-				Timestamp:   headerb.Time,
-			}
-		}
-	}
-	for blocka.Hash != blockb.Hash {
-		chainA = append(chainA, blocka)
-		headera := bc.GetHeaderByHash2(blocka.ParentHash)
-		if headera == nil {
-			log.Crit("Failed to get header by hash", "hash", blocka.ParentHash)
-		} else {
-			blocka = ptypes.BlockContext{
-				BlockNumber: headera.Number.Uint64(),
-				Hash:        headera.Hash(),
-				ParentHash:  headera.ParentHash,
-				Timestamp:   headera.Time,
-			}
-		}
-
-		chainB = append(chainB, blockb)
-		headerb := bc.GetHeaderByHash2(blockb.ParentHash)
-		if headerb == nil {
-			log.Crit("Failed to get header by hash", "hash", blockb.ParentHash)
-		} else {
-			blockb = ptypes.BlockContext{
-				BlockNumber: headerb.Number.Uint64(),
-				Hash:        headerb.Hash(),
-				ParentHash:  headerb.ParentHash,
-				Timestamp:   headerb.Time,
-			}
-		}
-	}
-	// now blocka == blockb == ancestor
-	slices.Reverse(chainA)
-	slices.Reverse(chainB)
-	return blocka, chainA, chainB
-}
-
-// pipelinePushBlockChange 计算 reorg 路径,处理 empty block,并向 Kafka 推送区块变更通知
+// pipelinePushBlockChange 处理 empty block,并向 Kafka 推送区块变更通知
 func (bc *BlockChain) pipelinePushBlockChange(block *types.Block) {
-	if leader.GlobalManager == nil || tracer.NodeXPusher == nil {
+	if tracer.NodeXPusher == nil {
 		return
-	}
-	isLeader := leader.GlobalManager.IsLeader()
-	leader.GlobalManager.RLock()
-	lastPushedBlock := tracer.NodeXPusher.LastPushedBlock()
-	leader.GlobalManager.RUnlock()
-
-	if !isLeader || lastPushedBlock == nil || lastPushedBlock.BlockNumber > block.NumberU64() {
-		return
-	}
-	_, dropBlocks, newBlocks := bc.getCommonAncestor(*lastPushedBlock, ptypes.BlockContext{
-		BlockNumber: block.NumberU64(),
-		Hash:        block.Hash(),
-		ParentHash:  block.ParentHash(),
-		Timestamp:   block.Time(),
-	})
-	var blockChange *ptypes.BlockChangeNotification
-	if len(dropBlocks) > 0 {
-		blockChange = &ptypes.BlockChangeNotification{
-			ChangeType: 2,
-			NewBlocks:  newBlocks,
-			DropBlocks: dropBlocks,
-		}
-	} else if len(newBlocks) > 0 {
-		blockChange = &ptypes.BlockChangeNotification{
-			ChangeType: 1,
-			NewBlocks:  newBlocks,
-		}
 	}
 
 	parent := bc.GetHeaderByHash(block.Header().ParentHash)
@@ -2204,11 +2120,10 @@ func (bc *BlockChain) pipelinePushBlockChange(block *types.Block) {
 		bc.logger.OnCommit(parent.Root, block.Root(), nil, nil, nil, nil, nil, nil)
 	}
 
-	if blockChange != nil {
-		if err := tracer.NodeXPusher.PushBlockChangeNotification(blockChange, nil); err != nil {
-			log.Error("PushBlockChangeNotification error", "err", err)
-		}
-		log.Info("NodeXPusher PushBlockChangeNotification", "blockChange", blockChange)
+	// Pipeline owns the leader check, getCommonAncestor computation, and Kafka write gate.
+	// Backup nodes return immediately without any computation.
+	if err := tracer.NodeXPusher.NotifyBlockCommit(block, bc, nil); err != nil {
+		log.Error("NotifyBlockCommit error", "err", err)
 	}
 }
 
